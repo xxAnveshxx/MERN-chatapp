@@ -28,7 +28,7 @@ app.get('/test', (req, res) => {
 app.get('/profile', async (req, res) => {
   const token = req.cookies?.token;
   if (token){
-    jwt.verify(token, jwtsecret, {}, (err, userData) => {
+    jwt.verify(token, jwtSecret, {}, (err, userData) => {
     if (err) throw err;
     res.json({
       userid: userData.userid,
@@ -47,7 +47,7 @@ app.post('/register', async (req, res) => {
     const createdUser = await User.create({ 
       username:username, 
       password: hashedPassword});
-    jwt.sign({ userid: createdUser._id }, jwtsecret, {}, (err, token) => {
+    jwt.sign({ userid: createdUser._id }, jwtSecret, {}, (err, token) => {
       if (err) {
         return res.status(500).json({ error: 'Token generation failed' });
       }

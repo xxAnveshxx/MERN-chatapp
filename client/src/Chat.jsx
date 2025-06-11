@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 export default function Chat() {
     const [ws,setWs] = useState(null);
     useEffect(() => {
-        new WebSocket('ws://localhost:4030');
-        setWs(ws);
-        ws.addEventListner('message', handleMessage);
+        const socket = new WebSocket('ws://localhost:4030');
+        setWs(socket);
+        socket.addEventListener('message', handleMessage);
     }, []);
 
     function handleMessage(e) {
