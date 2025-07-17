@@ -8,6 +8,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const ws = require('ws');
+const MessageModel = require('./models/message.js');
 
 dotenv.config();
 mongoose.connect(process.env.MONGO_URL);
@@ -23,6 +24,14 @@ app.use(cookieParser());
 
 app.get('/test', (req, res) => {
     res.json({ message: 'API is working!' });
+});
+
+app.get('/people', async (req, res) => {
+  const users = await User.find({}, '_id username');
+  res.json(users.map(user => ({
+    userid: user._id,
+    username: user.username
+  })));
 });
 
 app.get('/profile', async (req, res) => {
@@ -51,7 +60,7 @@ app.post('/register', async (req, res) => {
       if (err) {
         return res.status(500).json({ error: 'Token generation failed' });
       }
-      res.cookie('token', token, {sameSite: 'none', secure:true}).status(201).json({ id: createdUser._id, username });
+      res.cookie('token', token, {sameSite: 'lax', secure:false}).status(201).json({ id: createdUser._id, username });
     });
   } catch (e) {
     res.status(500).json({ error: 'Registration failed', details: e.message });
@@ -65,7 +74,7 @@ app.post('/login', async (req, res) => {
     const passOk = await bcrypt.compareSync(password, foundUser.password);
     if (passOk){
       jwt.sign({ userid: foundUser._id,username}, jwtSecret, {}, (err, token) => {
-        res.cookie('token',token, {sameSite: 'none', secure:true}).json({
+        res.cookie('token',token, {sameSite: 'lax', secure:false}).json({
           id: foundUser._id,
           username: foundUser.username
         });
@@ -94,9 +103,29 @@ wss.on('connection', (connection,req) => {
     }
   }
 
+  connection.on('message', async (message) => {
+    const messageData = JSON.parse(message.toString());
+    const {recipient, text} = messageData;
+    if (recipient && text){
+      const messageDoc = await MessageModel.create({
+        sender: connection.userId,
+        recipient,
+        text
+      });
+      [...wss.clients]
+      .filter(c => c.userId === recipient)
+      .forEach(c => c.send(JSON.stringify({
+            text,
+            sender: connection.userId,
+            id: messageDoc._id,
+      })));
+    }
+  });
+
   [...wss.clients].forEach(client =>{
     client.send(JSON.stringify({
       online: [...wss.clients].map(c => ({userId: c.userId, username: c.username})),
   }));
   });
 });
+ 
