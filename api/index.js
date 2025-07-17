@@ -98,34 +98,34 @@ wss.on('connection', (connection,req) => {
           const {userid, username} = userData;
           connection.userId = userid;
           connection.username = username;
+          connection.on('message', async (message) => {
+            const messageData = JSON.parse(message.toString());
+            const {recipient, text} = messageData;
+            if (recipient && text){
+              const messageDoc = await MessageModel.create({
+                sender: connection.userId,
+                recipient,
+                text
+              });
+              [...wss.clients]
+              .filter(c => c.userId === recipient)
+              .forEach(c => c.send(JSON.stringify({
+                    text,
+                    sender: connection.userId,
+                    recipient,
+                    id: messageDoc._id,
+              })));
+            }
+          });
+
+          [...wss.clients].forEach(client =>{
+            client.send(JSON.stringify({
+              online: [...wss.clients].map(c => ({userId: c.userId, username: c.username})),
+          }));
+          });
         });
       }
     }
   }
-
-  connection.on('message', async (message) => {
-    const messageData = JSON.parse(message.toString());
-    const {recipient, text} = messageData;
-    if (recipient && text){
-      const messageDoc = await MessageModel.create({
-        sender: connection.userId,
-        recipient,
-        text
-      });
-      [...wss.clients]
-      .filter(c => c.userId === recipient)
-      .forEach(c => c.send(JSON.stringify({
-            text,
-            sender: connection.userId,
-            id: messageDoc._id,
-      })));
-    }
-  });
-
-  [...wss.clients].forEach(client =>{
-    client.send(JSON.stringify({
-      online: [...wss.clients].map(c => ({userId: c.userId, username: c.username})),
-  }));
-  });
 });
  
