@@ -26,6 +26,32 @@ app.get('/test', (req, res) => {
     res.json({ message: 'API is working!' });
 });
 
+async function getUserDataFromRequest(req){
+  return new Promise((resolve, reject) => {
+    const token = req.cookies?.token;
+    if (token){
+      jwt.verify(token, jwtSecret, {}, (err, userData) => {
+        if (err) throw err;
+        resolve(userData);
+      });
+    }  else{
+      reject('Unauthorized');
+      }
+  });
+}
+app.get('/messages/:userId',async (req, res) => {
+  const { userId } = req.params;
+  const userData = await getUserDataFromRequest(req);
+  const ourUserId = userData.userid;
+  const messages = await MessageModel.find({
+    sender: {$in: [userId, ourUserId]},
+    recipient: {$in: [userId, ourUserId]}
+  }).sort({
+    createdAt: 1
+  });
+  res.json(messages);
+});
+
 app.get('/people', async (req, res) => {
   const users = await User.find({}, '_id username');
   res.json(users.map(user => ({
@@ -86,6 +112,7 @@ const server = app.listen(4030);
 console.log('API server is running on http://localhost:4030');
 
 const wss = new ws.WebSocketServer({ server });
+wss.setMaxListeners(20);
 wss.on('connection', (connection,req) => {
   const cookies = req.headers.cookie;
   if (cookies){
@@ -113,7 +140,7 @@ wss.on('connection', (connection,req) => {
                     text,
                     sender: connection.userId,
                     recipient,
-                    id: messageDoc._id,
+                    _id: messageDoc._id,
               })));
             }
           });

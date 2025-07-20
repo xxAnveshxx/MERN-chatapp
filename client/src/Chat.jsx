@@ -16,15 +16,24 @@ export default function Chat() {
     const divUnderMessages = useRef();
 
     useEffect(() => { 
-        const socket = new WebSocket('ws://localhost:4030');
-        setWs(socket);
-        socket.handleMessageWrapper = (ev) => handleMessage(ev);
-        socket.addEventListener('message', handleMessage);
-
+        connectToWebSocket();
         axios.get('/people').then(res => {
             showOnlinePeople(res.data);
         });
     }, []);
+
+    function connectToWebSocket() {
+        const socket = new WebSocket('ws://localhost:4030');
+        setWs(socket);
+        socket.handleMessageWrapper = (ev) => handleMessage(ev);
+        socket.addEventListener('message', handleMessage);
+        socket.addEventListener('close', () => {
+            setTimeout(() => {
+                console.log('Reconnecting to WebSocket...');
+                connectToWebSocket();
+            },1000);
+        });
+    }
 
     function showOnlinePeople(peopleArray) {
         const people = {};
@@ -55,7 +64,7 @@ export default function Chat() {
             sender: id,
             text: newMessageText, 
             recipient: selectedUserId,
-            id: Date.now(),
+            _id: Date.now(),
         }]));
     }
 
@@ -66,10 +75,19 @@ export default function Chat() {
         }
     }, [messages]);
 
+    useEffect(() => {
+        if(selectedUserId){
+            axios.get('/messages/' + selectedUserId).then(res => {
+                const {data} = res;
+                setMessages(data);
+            });
+        }
+    }, [selectedUserId])
+
     const onlinePeopleExclMe = {...onlinePeople};
     delete onlinePeopleExclMe[id];
 
-    const messagesWithoutDupes = uniqBy (messages, 'id');
+    const messagesWithoutDupes = uniqBy(messages, '_id');
 
     return(
         <div className= "flex h-screen">
@@ -102,10 +120,8 @@ export default function Chat() {
                     <div className="relative h-full">
                         <div className="overflow-y-scroll absolute top-0 left-0 right-0 bottom-16">
                             {messagesWithoutDupes.map(message => (
-                                <div className ={(message.sender === id ? 'text-right':'text-left')}>
+                                <div key={message._id} className ={(message.sender === id ? 'text-right':'text-left')}>
                                     <div className={"inline-block p-2 my-2 " + (message.sender === id ? 'bg-blue-500 text-white':'bg-white text-gray-500')}>
-                                        sender: {message.sender}<br />
-                                        my id: {id}<br />
                                         {message.text}
                                     </div>
                                 </div>
