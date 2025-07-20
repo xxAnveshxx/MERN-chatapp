@@ -5,6 +5,7 @@ import axios from "axios";
 import { useContext } from "react";
 import { UserContext } from "./UserContext";
 import uniqBy from "lodash/uniqBy";
+import Contact from "./Contact";
 
 export default function Chat() {
     const [ws,setWs] = useState(null);
@@ -14,11 +15,19 @@ export default function Chat() {
     const [newMessageText, setnewMessageText] = useState('');
     const [messages, setMessages] = useState([]);
     const divUnderMessages = useRef();
+    const [offlinePeople, setOfflinePeople] = useState([]);
 
     useEffect(() => { 
         connectToWebSocket();
         axios.get('/people').then(res => {
-            showOnlinePeople(res.data);
+            const offlinePeopleArr = res.data
+                .filter(p => p._id !== id);
+
+            const offlinePeople = {};
+            offlinePeopleArr.forEach(p => {
+                offlinePeople[p._id] = p;
+            });
+            setOfflinePeople(offlinePeople);
         });
     }, []);
 
@@ -37,8 +46,8 @@ export default function Chat() {
 
     function showOnlinePeople(peopleArray) {
         const people = {};
-        peopleArray.forEach(({userid, username}) => {
-            people[userid] = username;
+        peopleArray.forEach(({userId, username}) => {
+            people[userId] = {username};
         });
         setOnlinePeople(people);
     }   
@@ -84,6 +93,21 @@ export default function Chat() {
         }
     }, [selectedUserId])
 
+    useEffect(() => {
+        axios.get('/people').then(res => {
+            const offlinePeopleArr = res.data
+                .filter(p => p._id !== id) 
+                .filter(p => !Object.keys(onlinePeople).includes(p._id)); 
+
+            const offlinePeople = {};
+            offlinePeopleArr.forEach(p => {
+                offlinePeople[p._id] = p;
+            });
+
+            setOfflinePeople(offlinePeople);
+        });
+    }, [onlinePeople, id]);
+
     const onlinePeopleExclMe = {...onlinePeople};
     delete onlinePeopleExclMe[id];
 
@@ -91,23 +115,31 @@ export default function Chat() {
 
     return(
         <div className= "flex h-screen">
-            <div className="bg-white w-1/3">
+            <div className="bg-white w-1/3 flex flex-col">
+            <div className="flex-grow">
                 <Logo />
                 {Object.keys(onlinePeopleExclMe).map(userId => (
-            <div onClick={() => setSelectedUserId(userId)} key={userId}
-                className={
-                    "border-b border-gray-200 py-2 flex items-stretch cursor-pointer" +
-                    (userId === selectedUserId ? " bg-gray-100" : "")
-                }>
-                {userId === selectedUserId && (
-                    <div className="w-1 bg-blue-500 h-10 rounded-r-lg"></div>
-                )}
-                <div className="flex items-center gap-2 pl-4">
-                    <Avatar username={onlinePeople[userId]} userId={userId} />
-                    <span className="text-gray-800">{onlinePeople[userId]}</span>
-                </div>
+                    <Contact 
+                    key={userId}
+                    id={userId}
+                    online={true}
+                    username={onlinePeopleExclMe[userId].username}
+                    selected={userId === selectedUserId}
+                    onClick={() => setSelectedUserId(userId)} 
+                    />  
+                ))}
+                {Object.keys(offlinePeople).map(userId => (
+                    <Contact 
+                    key={userId}
+                    id={userId}
+                    online={false}
+                    username={offlinePeople[userId].username}
+                    selected={userId === selectedUserId}
+                    onClick={() => setSelectedUserId(userId)} 
+                    />
+                ))}
             </div>
-        ))}
+            <div>links</div>
             </div>
             <div className="flex flex-col bg-blue-200 w-2/3 p-4">
             <div className="flex-grow">
@@ -121,7 +153,7 @@ export default function Chat() {
                         <div className="overflow-y-scroll absolute top-0 left-0 right-0 bottom-16">
                             {messagesWithoutDupes.map(message => (
                                 <div key={message._id} className ={(message.sender === id ? 'text-right':'text-left')}>
-                                    <div className={"inline-block p-2 my-2 " + (message.sender === id ? 'bg-blue-500 text-white':'bg-white text-gray-500')}>
+                                    <div className={"inline-block p-2 my-2 rounded-lg " + (message.sender === id ? 'bg-blue-500 text-white':'bg-white text-gray-500')}>
                                         {message.text}
                                     </div>
                                 </div>
@@ -137,7 +169,7 @@ export default function Chat() {
                        value={newMessageText}
                        onChange ={ev => setnewMessageText(ev.target.value)} 
                     placeholder="Type your message here" 
-                    className = "bg-white flex-grow border p-2"></input>
+                    className = "bg-white flex-grow border p-2 rounded"></input>
                     <button type="submit" className="bg-blue-500 rounded-md text-white p-2 ml-2">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="size-6">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />

@@ -39,6 +39,7 @@ async function getUserDataFromRequest(req){
       }
   });
 }
+
 app.get('/messages/:userId',async (req, res) => {
   const { userId } = req.params;
   const userData = await getUserDataFromRequest(req);
@@ -53,11 +54,8 @@ app.get('/messages/:userId',async (req, res) => {
 });
 
 app.get('/people', async (req, res) => {
-  const users = await User.find({}, '_id username');
-  res.json(users.map(user => ({
-    userid: user._id,
-    username: user.username
-  })));
+  const users = await User.find({}, {'_id':1 ,username:1});
+  res.json(users);
 });
 
 app.get('/profile', async (req, res) => {
@@ -113,7 +111,53 @@ console.log('API server is running on http://localhost:4030');
 
 const wss = new ws.WebSocketServer({ server });
 wss.setMaxListeners(20);
-wss.on('connection', (connection,req) => {
+
+wss.on('connection', (connection, req) => {
+  
+  function notifyAboutOnlinePeople() {
+    [...wss.clients].forEach(client => {
+      if (client.readyState === ws.OPEN) {
+        client.send(JSON.stringify({
+          online: [...wss.clients]
+            .filter(c => c.readyState === ws.OPEN && c.userId)
+            .map(c => ({userId: c.userId, username: c.username})),
+        }));
+      }
+    });
+  }
+
+  connection.isAlive = true;
+  connection.lastSeen = Date.now();
+  
+  connection.pingInterval = setInterval(() => {
+    if (!connection.isAlive) {
+      console.log(`Connection terminated for user: ${connection.username || 'unknown'} - No response to ping`);
+      clearInterval(connection.pingInterval);
+      connection.terminate();
+      notifyAboutOnlinePeople();
+      return;
+    }
+    
+    connection.isAlive = false;
+    connection.ping();
+  }, 120000); 
+
+  connection.on('pong', () => {
+    connection.isAlive = true;
+    connection.lastSeen = Date.now();
+  });
+
+  connection.on('close', () => {
+    console.log(`User ${connection.username || 'unknown'} disconnected`);
+    clearInterval(connection.pingInterval);
+    notifyAboutOnlinePeople();
+  });
+
+  connection.on('error', (error) => {
+    console.log(`WebSocket error for user ${connection.username || 'unknown'}:`, error.message);
+    clearInterval(connection.pingInterval);
+  });
+
   const cookies = req.headers.cookie;
   if (cookies){
     const tokenCookieString = cookies.split(';').find(str => str.startsWith('token='));
@@ -125,7 +169,11 @@ wss.on('connection', (connection,req) => {
           const {userid, username} = userData;
           connection.userId = userid;
           connection.username = username;
+          
+          console.log(`User ${username} connected`);
+          
           connection.on('message', async (message) => {
+            connection.lastSeen = Date.now();
             const messageData = JSON.parse(message.toString());
             const {recipient, text} = messageData;
             if (recipient && text){
@@ -135,7 +183,7 @@ wss.on('connection', (connection,req) => {
                 text
               });
               [...wss.clients]
-              .filter(c => c.userId === recipient)
+              .filter(c => c.userId === recipient && c.readyState === ws.OPEN)
               .forEach(c => c.send(JSON.stringify({
                     text,
                     sender: connection.userId,
@@ -145,14 +193,19 @@ wss.on('connection', (connection,req) => {
             }
           });
 
-          [...wss.clients].forEach(client =>{
-            client.send(JSON.stringify({
-              online: [...wss.clients].map(c => ({userId: c.userId, username: c.username})),
-          }));
-          });
+          notifyAboutOnlinePeople();
         });
       }
     }
   }
 });
- 
+
+setInterval(() => {
+  const now = Date.now();
+  wss.clients.forEach((connection) => {
+    if (connection.lastSeen && (now - connection.lastSeen) > 300000) {
+      console.log(`Cleaning up stale connection for user: ${connection.username || 'unknown'}`);
+      connection.terminate();
+    }
+  });
+}, 600000); 
