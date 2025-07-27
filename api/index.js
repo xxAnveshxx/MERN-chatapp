@@ -9,11 +9,14 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const ws = require('ws');
 const MessageModel = require('./models/message.js');
+const fs = require('fs');
 
 dotenv.config();
 mongoose.connect(process.env.MONGO_URL);
 const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
+
+app.use('/uploads', express.static(__dirname + '/uploads'));
 
 app.use(cors({
     origin: process.env.CLIENT_URL,
@@ -177,25 +180,41 @@ wss.on('connection', (connection, req) => {
           console.log(`User ${username} connected`);
           
           connection.on('message', async (message) => {
-            connection.lastSeen = Date.now();
-            const messageData = JSON.parse(message.toString());
-            const {recipient, text} = messageData;
-            if (recipient && text){
-              const messageDoc = await MessageModel.create({
-                sender: connection.userId,
-                recipient,
-                text
-              });
-              [...wss.clients]
-              .filter(c => c.userId === recipient && c.readyState === ws.OPEN)
-              .forEach(c => c.send(JSON.stringify({
-                    text,
-                    sender: connection.userId,
-                    recipient,
-                    _id: messageDoc._id,
-              })));
-            }
-          });
+          connection.lastSeen = Date.now();
+          const messageData = JSON.parse(message.toString());
+          const {recipient, text, file} = messageData;
+          
+          let filename = null;
+          if (file) {
+            console.log('size', file.data.length);
+            const parts = file.name.split('.');
+            const ext = parts[parts.length - 1];
+            filename = Date.now() + '.'+ext;
+            const path = __dirname + '/uploads/' + filename;
+            const bufferData = Buffer.from(file.data.split(',')[1], 'base64');
+            fs.writeFile(path, bufferData, () => {
+              console.log('file saved:'+path);
+            });
+          }
+          
+          if (recipient && (text || file)){ 
+            const messageDoc = await MessageModel.create({
+              sender: connection.userId,
+              recipient,
+              text: text || '',
+              file: file ? filename : null, 
+            });
+            [...wss.clients]
+            .filter(c => (c.userId === recipient || c.userId === connection.userId) && c.readyState === ws.OPEN)
+            .forEach(c => c.send(JSON.stringify({
+                  text,
+                  sender: connection.userId,
+                  recipient,
+                  file: file ? filename : null, 
+                  _id: messageDoc._id,
+            })));
+          }
+        });
 
           notifyAboutOnlinePeople();
         });
