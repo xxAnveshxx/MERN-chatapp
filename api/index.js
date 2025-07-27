@@ -106,6 +106,10 @@ app.post('/login', async (req, res) => {
   }
 }}); 
 
+app.post('/logout', (req, res) => {
+  res.cookie('token', '', { sameSite: 'lax', secure: false }).status(200).json({ message: 'Logged out successfully' });
+});
+
 const server = app.listen(4030);
 console.log('API server is running on http://localhost:4030');
 
