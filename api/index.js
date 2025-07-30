@@ -10,17 +10,36 @@ const bcrypt = require('bcryptjs');
 const ws = require('ws');
 const MessageModel = require('./models/Message.js');
 const fs = require('fs');
-
-dotenv.config();
+const isProduction = process.env.NODE_ENV === 'production';
 mongoose.connect(process.env.MONGO_URL);
 const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
+const cookieOptions = {
+  sameSite: isProduction ? 'none' : 'lax',
+  secure: isProduction,
+  httpOnly: true,
+  maxAge: 24 * 60 * 60 * 1000 
+};
+dotenv.config();
+
 
 app.use('/uploads', express.static(__dirname + '/uploads'));
 
 app.use(cors({
-    origin: process.env.CLIENT_URL,
-    credentials: true
+  origin: (origin, callback) => {
+    const allowedOrigins = [
+      'https://mern-chatapp-rho.vercel.app',
+      'https://mern-chatapp-git-main-anveshs-projects-2e764ae5.vercel.app',
+      'http://localhost:5173'
+    ];
+
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
 }));
 app.use(express.json());
 app.use(cookieParser());
@@ -83,11 +102,14 @@ app.post('/register', async (req, res) => {
     const createdUser = await User.create({ 
       username:username, 
       password: hashedPassword});
-    jwt.sign({ userid: createdUser._id }, jwtSecret, {}, (err, token) => {
+    jwt.sign({ userid: createdUser._id, username }, jwtSecret, {}, (err, token) => {
       if (err) {
         return res.status(500).json({ error: 'Token generation failed' });
       }
-      res.cookie('token', token, {sameSite: 'lax', secure:false}).status(201).json({ id: createdUser._id, username });
+      res.cookie('token', token, cookieOptions).status(201).json({ 
+        id: createdUser._id, 
+        username 
+      });
     });
   } catch (e) {
     res.status(500).json({ error: 'Registration failed', details: e.message });
@@ -96,21 +118,36 @@ app.post('/register', async (req, res) => {
 
 app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  const foundUser = await User.findOne({ username });
-  if (foundUser){
-    const passOk = await bcrypt.compareSync(password, foundUser.password);
-    if (passOk){
-      jwt.sign({ userid: foundUser._id,username}, jwtSecret, {}, (err, token) => {
-        res.cookie('token',token, {sameSite: 'lax', secure:false}).json({
-          id: foundUser._id,
-          username: foundUser.username
+  try {
+    const foundUser = await User.findOne({ username });
+    if (foundUser){
+      const passOk = bcrypt.compareSync(password, foundUser.password);
+      if (passOk){
+        jwt.sign({ userid: foundUser._id, username}, jwtSecret, {}, (err, token) => {
+          if (err) {
+            return res.status(500).json({ error: 'Token generation failed' });
+          }
+          res.cookie('token', token, cookieOptions).json({
+            id: foundUser._id,
+            username: foundUser.username
+          });
         });
-    });
+      } else {
+        res.status(401).json({ error: 'Invalid credentials' });
+      }
+    } else {
+      res.status(401).json({ error: 'User not found' });
+    }
+  } catch (e) {
+    res.status(500).json({ error: 'Login failed', details: e.message });
   }
-}}); 
+});  
 
 app.post('/logout', (req, res) => {
-  res.cookie('token', '', { sameSite: 'lax', secure: false }).status(200).json({ message: 'Logged out successfully' });
+  res.cookie('token', '', { 
+    ...cookieOptions,
+    maxAge: 0 
+  }).status(200).json({ message: 'Logged out successfully' });
 });
 
 const server = app.listen(4030);
