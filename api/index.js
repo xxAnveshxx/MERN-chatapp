@@ -9,15 +9,21 @@ const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const ws = require('ws');
 const MessageModel = require('./models/Message.js');
-const fs = require('fs');
+const cloudinary = require('cloudinary').v2;
 
 dotenv.config();
+console.log(process.env.CLOUDINARY_API_KEY)
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
 const PORT = process.env.PORT || 4030;
 mongoose.connect(process.env.MONGO_URL);
 const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
-
-app.use('/uploads', express.static(__dirname + '/uploads'));
 
 app.use(cors({
     origin: [
@@ -233,17 +239,19 @@ wss.on('connection', (connection, req) => {
         const messageData = JSON.parse(message.toString());
         const {recipient, text, file} = messageData;
         
-        let filename = null;
+        let fileUrl = null;
         if (file) {
-          console.log('size', file.data.length);
-          const parts = file.name.split('.');
-          const ext = parts[parts.length - 1];
-          filename = Date.now() + '.'+ext;
-          const path = __dirname + '/uploads/' + filename;
-          const bufferData = Buffer.from(file.data.split(',')[1], 'base64');
-          fs.writeFile(path, bufferData, () => {
-            console.log('file saved:'+path);
-          });
+          try {
+            const result = await cloudinary.uploader.upload(file.data, {
+              resource_type: 'auto',
+              public_id: `${Date.now()}_${file.name}`,
+              folder: 'chat_uploads'
+            });
+            fileUrl = result.secure_url;
+            console.log('File uploaded to Cloudinary:', fileUrl);
+          } catch (error) {
+            console.error('Cloudinary upload error:', error);
+          }
         }
         
         if (recipient && (text || file)){ 
@@ -251,7 +259,7 @@ wss.on('connection', (connection, req) => {
             sender: connection.userId,
             recipient,
             text: text || '',
-            file: file ? filename : null, 
+            file: file ? fileUrl : null, 
           });
           [...wss.clients]
           .filter(c => (c.userId === recipient || c.userId === connection.userId) && c.readyState === ws.OPEN)
@@ -259,7 +267,7 @@ wss.on('connection', (connection, req) => {
                 text,
                 sender: connection.userId,
                 recipient,
-                file: file ? filename : null, 
+                file: file ? fileUrl : null, 
                 _id: messageDoc._id,
           })));
         }
