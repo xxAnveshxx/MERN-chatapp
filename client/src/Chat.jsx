@@ -33,7 +33,8 @@ export default function Chat() {
     }, []);
 
     function connectToWebSocket() {
-        const socket = new WebSocket('ws://localhost:4030');
+        const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:4030';
+        const socket = new WebSocket(wsUrl);
         setWs(socket);
         socket.handleMessageWrapper = (ev) => handleMessage(ev);
         socket.addEventListener('message', handleMessage);
@@ -65,13 +66,17 @@ export default function Chat() {
 
     function sendMessage(ev, file = null) {
         if (ev) ev.preventDefault();
-        ws.send(JSON.stringify({
-            text: newMessageText,
-            recipient: selectedUserId,
-            file,
-        }));
         
-        setnewMessageText('');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                text: newMessageText,
+                recipient: selectedUserId,
+                file,
+            }));
+            setnewMessageText('');
+        } else {
+            console.log('WebSocket not connected');
+        }
     }
 
     function sendFile(ev) {
