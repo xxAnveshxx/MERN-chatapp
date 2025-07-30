@@ -39,7 +39,7 @@ export default function Register() {
                     className="bg-emerald-500 hover:bg-emerald-400 text-slate-900 block w-full rounded-md p-2 transition-colors duration-200 font-semibold font-serif text-lg">
                     {isLoginOrRegister === 'register' ? 'Register' : 'Login'}
                 </button>
-                <div className="text-emerald-300 hover:text-emerald-200 transition-colors duration-200 p-2 text-center font-serif">
+                <div className="text-white hover:text-white p-2 text-center font-serif">
                     {isLoginOrRegister === 'register' ? (
                         <div>
                             Already a member?{' '}
