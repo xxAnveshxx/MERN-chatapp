@@ -12,6 +12,7 @@ const MessageModel = require('./models/message.js');
 const fs = require('fs');
 
 dotenv.config();
+const PORT = process.env.PORT || 4030;
 mongoose.connect(process.env.MONGO_URL);
 const jwtSecret = process.env.JWT_SECRET;
 const bcryptSalt = bcrypt.genSaltSync(10);
@@ -19,9 +20,10 @@ const bcryptSalt = bcrypt.genSaltSync(10);
 app.use('/uploads', express.static(__dirname + '/uploads'));
 
 app.use(cors({
-    origin: process.env.CLIENT_URL,
+    origin: [process.env.CLIENT_URL, 'http://localhost:5173'], 
     credentials: true
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -87,7 +89,11 @@ app.post('/register', async (req, res) => {
       if (err) {
         return res.status(500).json({ error: 'Token generation failed' });
       }
-      res.cookie('token', token, {sameSite: 'lax', secure:false}).status(201).json({ id: createdUser._id, username });
+      res.cookie('token', token, {
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', 
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true 
+      }).status(201).json({ id: createdUser._id, username });
     });
   } catch (e) {
     res.status(500).json({ error: 'Registration failed', details: e.message });
@@ -101,7 +107,11 @@ app.post('/login', async (req, res) => {
     const passOk = await bcrypt.compareSync(password, foundUser.password);
     if (passOk){
       jwt.sign({ userid: foundUser._id,username}, jwtSecret, {}, (err, token) => {
-        res.cookie('token',token, {sameSite: 'lax', secure:false}).json({
+        res.cookie('token', token, {
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: process.env.NODE_ENV === 'production',
+          httpOnly: true
+        }).json({
           id: foundUser._id,
           username: foundUser.username
         });
@@ -110,11 +120,15 @@ app.post('/login', async (req, res) => {
 }}); 
 
 app.post('/logout', (req, res) => {
-  res.cookie('token', '', { sameSite: 'lax', secure: false }).status(200).json({ message: 'Logged out successfully' });
+  res.cookie('token', '', { 
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true
+  }).status(200).json({ message: 'Logged out successfully' });
 });
 
-const server = app.listen(4030);
-console.log('API server is running on http://localhost:4030');
+const server = app.listen(PORT, () => {
+  console.log(`API server is running on port ${PORT}`);});
 
 const wss = new ws.WebSocketServer({ server });
 wss.setMaxListeners(20);

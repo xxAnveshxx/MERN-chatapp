@@ -33,7 +33,8 @@ export default function Chat() {
     }, []);
 
     function connectToWebSocket() {
-        const socket = new WebSocket('ws://localhost:4030');
+        const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:4030';
+        const socket = new WebSocket(wsUrl);
         setWs(socket);
         socket.handleMessageWrapper = (ev) => handleMessage(ev);
         socket.addEventListener('message', handleMessage);

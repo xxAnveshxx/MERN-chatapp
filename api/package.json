@@ -1,4 +1,11 @@
 {
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "engines": {
+    "node": "18.x"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
@@ -9,5 +16,8 @@
     "mongodb": "^6.17.0",
     "mongoose": "^8.15.1",
     "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
   }
 }
