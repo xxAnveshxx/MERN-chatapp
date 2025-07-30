@@ -21,7 +21,7 @@ app.use('/uploads', express.static(__dirname + '/uploads'));
 
 app.use(cors({
     origin: [
-        'https://mern-chatapp-1-bimi.onrender.com',
+        'https://mern-chatapp-1-mzeq.onrender.com',
         'http://localhost:5173',
         process.env.CLIENT_URL
     ], 
