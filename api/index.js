@@ -20,7 +20,10 @@ const bcryptSalt = bcrypt.genSaltSync(10);
 app.use('/uploads', express.static(__dirname + '/uploads'));
 
 app.use(cors({
-    origin: [process.env.CLIENT_URL, 'http://localhost:5173'], 
+    origin: [
+        'https://mern-chatapp-1-bimi.onrender.com',
+        'http://localhost:5173'
+    ], 
     credentials: true
 }));
 
