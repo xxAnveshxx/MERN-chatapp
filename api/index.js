@@ -8,7 +8,7 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const ws = require('ws');
-const MessageModel = require('./models/message.js');
+const MessageModel = require('./models/Message.js');
 const fs = require('fs');
 
 dotenv.config();
