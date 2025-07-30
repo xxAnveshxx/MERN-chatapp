@@ -10,11 +10,20 @@ export default function Register() {
 
     async function handlesubmit(ev) {
         ev.preventDefault();
-        const url = isLoginOrRegister === 'register' ? '/register' : '/login';
-        const {data} = await axios.post(url, {username, password});
+        try {
+            const url = isLoginOrRegister === 'register' ? '/register' : '/login';
+            const {data} = await axios.post(url, {username, password});
+            
+            if (data.token) {
+                localStorage.setItem('token', data.token);
+            }
+            
             setLoggedInUsername(username);
             setId(data.id);
+        } catch (error) {
+            console.error('Login/Register error:', error);
         }
+}
 
     return (
         <div className="h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-green-900 flex items-center justify-center">

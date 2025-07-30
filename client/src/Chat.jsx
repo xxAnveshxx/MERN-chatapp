@@ -34,6 +34,8 @@ export default function Chat() {
 
     function connectToWebSocket() {
         const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:4030';
+        const token = localStorage.getItem('token');
+        
         const socket = new WebSocket(wsUrl);
         setWs(socket);
         socket.handleMessageWrapper = (ev) => handleMessage(ev);
@@ -88,6 +90,7 @@ export default function Chat() {
 
     function logout(){
         axios.post('/logout').then(() => {
+            localStorage.removeItem('token');
             setId(null);
             setUsername(null);
             setWs(null);
@@ -113,6 +116,11 @@ export default function Chat() {
                 const allRelevantMessages = [...apiMessages, ...relevantRealTimeMessages];
                 const uniqueMessages = uniqBy(allRelevantMessages, '_id');
                 setMessages(uniqueMessages.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)));
+            }).catch(error => {
+                console.error('Failed to fetch messages:', error);
+                if (error.response?.status === 401) {
+                    logout();
+                }
             });
         }
     }, [selectedUserId, allMessages])

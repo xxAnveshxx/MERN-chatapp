@@ -22,7 +22,8 @@ app.use('/uploads', express.static(__dirname + '/uploads'));
 app.use(cors({
     origin: [
         'https://mern-chatapp-1-bimi.onrender.com',
-        'http://localhost:5173'
+        'http://localhost:5173',
+        process.env.CLIENT_URL
     ], 
     credentials: true
 }));
@@ -36,29 +37,43 @@ app.get('/test', (req, res) => {
 
 async function getUserDataFromRequest(req){
   return new Promise((resolve, reject) => {
-    const token = req.cookies?.token;
+    let token = req.cookies?.token;
+    
+    if (!token && req.headers.authorization) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    
     if (token){
       jwt.verify(token, jwtSecret, {}, (err, userData) => {
-        if (err) throw err;
-        resolve(userData);
+        if (err) {
+          console.log('JWT verification error:', err.message);
+          reject('Invalid token');
+        } else {
+          resolve(userData);
+        }
       });
-    }  else{
-      reject('Unauthorized');
-      }
+    } else {
+      reject('No token provided');
+    }
   });
 }
 
 app.get('/messages/:userId',async (req, res) => {
-  const { userId } = req.params;
-  const userData = await getUserDataFromRequest(req);
-  const ourUserId = userData.userid;
-  const messages = await MessageModel.find({
-    sender: {$in: [userId, ourUserId]},
-    recipient: {$in: [userId, ourUserId]}
-  }).sort({
-    createdAt: 1
-  });
-  res.json(messages);
+  try {
+    const { userId } = req.params;
+    const userData = await getUserDataFromRequest(req);
+    const ourUserId = userData.userid;
+    const messages = await MessageModel.find({
+      sender: {$in: [userId, ourUserId]},
+      recipient: {$in: [userId, ourUserId]}
+    }).sort({
+      createdAt: 1
+    });
+    res.json(messages);
+  } catch (error) {
+    console.log('Messages fetch error:', error);
+    res.status(401).json({ error: 'Unauthorized' });
+  }
 });
 
 app.get('/people', async (req, res) => {
@@ -67,16 +82,13 @@ app.get('/people', async (req, res) => {
 });
 
 app.get('/profile', async (req, res) => {
-  const token = req.cookies?.token;
-  if (token){
-    jwt.verify(token, jwtSecret, {}, (err, userData) => {
-    if (err) throw err;
+  try {
+    const userData = await getUserDataFromRequest(req);
     res.json({
       userid: userData.userid,
       username: userData.username
     });
-  });
-  }else{
+  } catch (error) {
     res.status(401).json({ error: 'Unauthorized' });
   }
 });
@@ -96,7 +108,11 @@ app.post('/register', async (req, res) => {
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', 
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true 
-      }).status(201).json({ id: createdUser._id, username });
+      }).status(201).json({ 
+        id: createdUser._id, 
+        username,
+        token: token
+      });
     });
   } catch (e) {
     res.status(500).json({ error: 'Registration failed', details: e.message });
@@ -116,7 +132,8 @@ app.post('/login', async (req, res) => {
           httpOnly: true
         }).json({
           id: foundUser._id,
-          username: foundUser.username
+          username: foundUser.username,
+          token: token
         });
     });
   }
@@ -183,60 +200,77 @@ wss.on('connection', (connection, req) => {
   });
 
   const cookies = req.headers.cookie;
-  if (cookies){
+  const authHeader = req.headers.authorization;
+  
+  let token = null;
+  
+  if (cookies) {
     const tokenCookieString = cookies.split(';').find(str => str.startsWith('token='));
-    if (tokenCookieString){
-      const token = tokenCookieString.split('=')[1];
-      if (token) {
-        jwt.verify(token, jwtSecret, {}, (err, userData)=> {
-          if (err) throw err;
-          const {userid, username} = userData;
-          connection.userId = userid;
-          connection.username = username;
-          
-          console.log(`User ${username} connected`);
-          
-          connection.on('message', async (message) => {
-          connection.lastSeen = Date.now();
-          const messageData = JSON.parse(message.toString());
-          const {recipient, text, file} = messageData;
-          
-          let filename = null;
-          if (file) {
-            console.log('size', file.data.length);
-            const parts = file.name.split('.');
-            const ext = parts[parts.length - 1];
-            filename = Date.now() + '.'+ext;
-            const path = __dirname + '/uploads/' + filename;
-            const bufferData = Buffer.from(file.data.split(',')[1], 'base64');
-            fs.writeFile(path, bufferData, () => {
-              console.log('file saved:'+path);
-            });
-          }
-          
-          if (recipient && (text || file)){ 
-            const messageDoc = await MessageModel.create({
-              sender: connection.userId,
-              recipient,
-              text: text || '',
-              file: file ? filename : null, 
-            });
-            [...wss.clients]
-            .filter(c => (c.userId === recipient || c.userId === connection.userId) && c.readyState === ws.OPEN)
-            .forEach(c => c.send(JSON.stringify({
-                  text,
-                  sender: connection.userId,
-                  recipient,
-                  file: file ? filename : null, 
-                  _id: messageDoc._id,
-            })));
-          }
-        });
-
-          notifyAboutOnlinePeople();
-        });
-      }
+    if (tokenCookieString) {
+      token = tokenCookieString.split('=')[1];
     }
+  }
+  
+  if (!token && authHeader) {
+    token = authHeader.split(' ')[1];
+  }
+  
+  if (token) {
+    jwt.verify(token, jwtSecret, {}, (err, userData) => {
+      if (err) {
+        console.log('WebSocket auth error:', err.message);
+        connection.close();
+        return;
+      }
+      
+      const {userid, username} = userData;
+      connection.userId = userid;
+      connection.username = username;
+      
+      console.log(`User ${username} connected via WebSocket`);
+      
+      connection.on('message', async (message) => {
+        connection.lastSeen = Date.now();
+        const messageData = JSON.parse(message.toString());
+        const {recipient, text, file} = messageData;
+        
+        let filename = null;
+        if (file) {
+          console.log('size', file.data.length);
+          const parts = file.name.split('.');
+          const ext = parts[parts.length - 1];
+          filename = Date.now() + '.'+ext;
+          const path = __dirname + '/uploads/' + filename;
+          const bufferData = Buffer.from(file.data.split(',')[1], 'base64');
+          fs.writeFile(path, bufferData, () => {
+            console.log('file saved:'+path);
+          });
+        }
+        
+        if (recipient && (text || file)){ 
+          const messageDoc = await MessageModel.create({
+            sender: connection.userId,
+            recipient,
+            text: text || '',
+            file: file ? filename : null, 
+          });
+          [...wss.clients]
+          .filter(c => (c.userId === recipient || c.userId === connection.userId) && c.readyState === ws.OPEN)
+          .forEach(c => c.send(JSON.stringify({
+                text,
+                sender: connection.userId,
+                recipient,
+                file: file ? filename : null, 
+                _id: messageDoc._id,
+          })));
+        }
+      });
+
+      notifyAboutOnlinePeople();
+    });
+  } else {
+    console.log('No token provided for WebSocket connection');
+    connection.close();
   }
 });
 
@@ -248,4 +282,4 @@ setInterval(() => {
       connection.terminate();
     }
   });
-}, 600000); 
+}, 600000);
