@@ -199,27 +199,26 @@ wss.on('connection', (connection, req) => {
     clearInterval(connection.pingInterval);
   });
 
+  const url = require('url');
+  const query = url.parse(req.url, true).query;
   const cookies = req.headers.cookie;
-  const authHeader = req.headers.authorization;
   
   let token = null;
   
-  if (cookies) {
+  if (query.token) {
+    token = query.token;
+  } else if (cookies) {
     const tokenCookieString = cookies.split(';').find(str => str.startsWith('token='));
     if (tokenCookieString) {
       token = tokenCookieString.split('=')[1];
     }
   }
   
-  if (!token && authHeader) {
-    token = authHeader.split(' ')[1];
-  }
-  
   if (token) {
     jwt.verify(token, jwtSecret, {}, (err, userData) => {
       if (err) {
         console.log('WebSocket auth error:', err.message);
-        connection.close();
+        connection.close(1008, 'Invalid token');
         return;
       }
       
@@ -270,7 +269,7 @@ wss.on('connection', (connection, req) => {
     });
   } else {
     console.log('No token provided for WebSocket connection');
-    connection.close();
+    connection.close(1008, 'No token provided');
   }
 });
 

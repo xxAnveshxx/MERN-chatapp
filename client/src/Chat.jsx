@@ -32,20 +32,48 @@ export default function Chat() {
         });
     }, []);
 
+
+
     function connectToWebSocket() {
         const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:4030';
         const token = localStorage.getItem('token');
         
-        const socket = new WebSocket(wsUrl);
+        if (!token) {
+            console.log('No token found, cannot connect to WebSocket');
+            return;
+        }
+        
+        const socketUrl = `${wsUrl}?token=${token}`;
+        console.log('Connecting to WebSocket:', socketUrl);
+        
+        const socket = new WebSocket(socketUrl);
+        
+        socket.addEventListener('open', () => {
+            console.log('WebSocket connected successfully');
+        });
+        
+        socket.addEventListener('error', (error) => {
+            console.error('WebSocket connection error:', error);
+        });
+        
+        socket.addEventListener('close', (event) => {
+            console.log('WebSocket closed:', event.code, event.reason);
+            if (event.code === 1008) {
+                console.log('Authentication failed, not reconnecting');
+                logout();
+                return;
+            }
+            if (event.code !== 1000 && event.code !== 1001) {
+                setTimeout(() => {
+                    console.log('Reconnecting to WebSocket...');
+                    connectToWebSocket();
+                }, 3000);
+            }
+        });
+        
         setWs(socket);
         socket.handleMessageWrapper = (ev) => handleMessage(ev);
         socket.addEventListener('message', handleMessage);
-        socket.addEventListener('close', () => {
-            setTimeout(() => {
-                console.log('Reconnecting to WebSocket...');
-                connectToWebSocket();
-            },1000);
-        });
     }
 
     function showOnlinePeople(peopleArray) {
